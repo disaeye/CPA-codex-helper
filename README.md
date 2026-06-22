@@ -1,166 +1,190 @@
 # CPA Codex Helper
 
-> 增强 [CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus) 的 Codex 额度展示：周期用量、总额度反推、剩余额度估算、提前耗尽预警。
+> Enhance [CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus) Codex quota display: cycle usage, total-limit inference, remaining-quota estimate, early-exhaustion warning.
 
-一个面向自部署 CPA-Manager-Plus 前端的油猴脚本。脚本不修改任何后端数据，只在浏览器侧复用页面已有的请求与授权信息，为 Codex 额度卡片补充更直观的用量、额度与预测信息。
+[简体中文](./README.zh-CN.md) | English
 
-## 功能
+A userscript for self-hosted CPA-Manager-Plus frontends. The script does not touch any backend data — it reuses the page's own requests and authorization info in the browser to add clearer usage, limit, and prediction info to Codex quota cards.
 
-### 单卡片增强
+## Screenshots
 
-在每个 Codex 账号卡片中额外展示：
+### Card with usage
 
-- **本周期已用**：token 数、费用、请求次数（原卡片不提供）
-- **总额度**：基于 Codex 返回的已用百分比与 analytics 聚合用量反推
-- **剩余额度**：总额度减去已用
-- **提前耗尽预警**：按当前消耗速度，预计会早于周期结束时显示警告与预计耗尽时间
+For accounts that have consumed this cycle, the script adds three rows under the original card: cycle usage, inferred total limit, and an early-exhaustion warning.
 
-### 未使用账号估算
+![Card with usage](./img/card-with-usage.png)
 
-对于本周期尚未消耗的账号：
+### Card without usage
 
-- **估算总额度**：取同周期窗口下有真实消耗账号的反推额度中位数作为估算
-- 估算结果会标注「参考同周期 N 个账号中位数」，便于判断可信度
+For accounts that have not been used this cycle, the script shows "Not used yet" and an estimated limit based on the median of active accounts in the same cycle window.
 
-### 区块标题聚合
+![Card without usage](./img/card-without-usage.png)
 
-在 Codex 区块标题处展示所有账号的合并视图：
+### Aggregate summary
 
-- 已用 / 总额度（含估算账号的贡献）
-- 使用百分比，按 30% / 70% 阈值变色
-- 活跃账号数 + 估算账号数
-- 按合并消耗速度预测的耗尽时间（早于周期结束时显示）
+A chip next to the "Codex 额度" section title shows the combined view across all accounts: used / total tokens & cost, usage percentage (color-coded at 30% / 70%), estimated-account count, and a predicted exhaustion time when applicable.
 
-### 其他
+![Aggregate summary](./img/aggregate-summary.png)
 
-- **本地缓存**：复用 5 分钟内的 analytics 数据，7 天内的配额信息，减少重复请求
-- **自动降级**：CPA-Manager-Plus 实例无 monitoring analytics 端点时自动降级，不破坏原页面
-- **多语言**：跟随 CPA-Manager-Plus 当前语言，支持简体中文、繁体中文、英文、俄文
+## Features
 
-## 安装
+### Per-card enhancement
 
-### 方式一：通过油猴扩展安装
+Each Codex account card gains:
 
-1. 浏览器安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/)
-2. 打开脚本安装地址：
+- **Used this cycle**: token count, cost, request count (not provided by the original card)
+- **Total limit**: inferred from Codex's reported `used_percent` and analytics-aggregated usage
+- **Remaining**: total minus used
+- **Early-exhaustion warning**: shown with the predicted exhaustion time when the current pace would exhaust the quota before the cycle ends
+
+### Estimate for unused accounts
+
+For accounts with no consumption this cycle:
+
+- **Estimated limit**: median of inferred limits from accounts with real usage in the same cycle window
+- Annotated with "median of N same-cycle accounts" so the confidence is visible
+
+### Section header aggregate
+
+A chip at the Codex section title shows the merged view of all accounts:
+
+- Used / total (including estimated contributions)
+- Usage percentage, color-coded at 30% / 70% thresholds
+- Active account count + estimated account count
+- Predicted exhaustion time based on the combined consumption rate (shown only when earlier than cycle end)
+
+### Other
+
+- **Local cache**: reuses analytics data within 5 minutes and quota info within 7 days to reduce repeated requests
+- **Graceful degradation**: when the CPA-Manager-Plus instance has no monitoring analytics endpoint, the script degrades silently without breaking the page
+- **Internationalization**: follows the CPA-Manager-Plus language; supports English, Simplified Chinese, Traditional Chinese, and Russian
+
+## Installation
+
+### Option 1: Install via userscript manager
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/) in your browser
+2. Open the install URL:
 
    ```
    https://raw.githubusercontent.com/disaeye/CPA-codex-helper/main/CPA-codex-helper.user.js
    ```
 
-3. 在弹出的安装页确认即可
+3. Confirm on the installation page
 
-### 方式二：手动粘贴
+### Option 2: Manual paste
 
-1. 复制 [`CPA-codex-helper.user.js`](./CPA-codex-helper.user.js) 的全部内容
-2. 在油猴扩展中新建脚本，粘贴内容并保存
+1. Copy the full content of [`CPA-codex-helper.user.js`](./CPA-codex-helper.user.js)
+2. Create a new script in your userscript manager, paste the content, and save
 
-### 匹配规则
+### Match rules
 
-脚本默认匹配任意域名下路径包含 `management.html` 的页面，覆盖自部署 CPA-Manager-Plus 的管理页：
+The script matches any page whose path contains `management.html`, covering self-hosted CPA-Manager-Plus management pages:
 
 ```js
 // @match        *://*/*management.html*
 // @match        *://*/management.html*
 ```
 
-按路径而非域名匹配，无需为每个自部署实例手动加规则。若想缩小运行范围，可改成自己的实例域名：
+Matching by path rather than domain means no per-instance rule is needed. To narrow the scope, set your own domain:
 
 ```js
 // @match        https://your-cpa-instance.example.com/*management.html*
 ```
 
-## 使用
+## Usage
 
-打开 CPA-Manager-Plus 管理页后脚本会自动运行。脚本依赖页面自然产生的请求获取数据：
+The script runs automatically on the CPA-Manager-Plus management page. It depends on requests the page makes naturally to gather data:
 
-1. 从 CPA-Manager-Plus 请求中捕获授权信息与 API base
-2. 从 `auth-files` 响应建立文件名与账号索引的映射
-3. 从 Codex usage 响应读取重置时间、周期窗口与已用百分比
-4. 调用 CPA-Manager-Plus 的 monitoring analytics 接口聚合周期内用量
-5. 将计算结果注入到 Codex 额度卡片和区块标题
+1. Capture authorization info and API base from CPA-Manager-Plus requests
+2. Build a file-name → account-index map from `auth-files` responses
+3. Read reset time, cycle window, and used percent from Codex usage responses
+4. Call CPA-Manager-Plus monitoring analytics to aggregate cycle usage
+5. Inject the computed results into Codex quota cards and the section title
 
-页面打开后若没立即出现增强信息，可在 CPA-Manager-Plus 中刷新一次 Codex 额度，让原页面触发相关接口请求。
+If the enhanced info does not appear right after page load, refresh the Codex quota once in CPA-Manager-Plus so the original page triggers the relevant requests.
 
-## 工作原理
+## How it works
 
-### 总额度反推
+### Total-limit inference
 
-Codex 返回的 `used_percent` 是基于真实账户状态的已用百分比。配合 CPA-Manager-Plus analytics 聚合出的实际已用 token 数，可直接反推总额度：
+The `used_percent` returned by Codex is based on the real account state. Combined with the actual token count aggregated by CPA-Manager-Plus analytics, the total limit can be inferred directly:
 
 ```
 total_tokens = used_tokens / (used_percent / 100)
 ```
 
-这比按时间外推更可靠——无论密集使用还是均匀使用，`used_percent` 都反映真实消耗。
+This is more reliable than time-based extrapolation — no matter whether usage is bursty or steady, `used_percent` reflects the real consumption.
 
-### 提前耗尽预测
+### Early-exhaustion prediction
 
-基于当前周期内的平均消耗速率（token/毫秒），推算剩余额度耗尽时间：
+Based on the average consumption rate (tokens per ms) within the current cycle, the script estimates when the remaining quota will run out:
 
 ```
 remaining_ms = remaining_tokens / consumption_rate
 exhaust_at = now + remaining_ms
 ```
 
-仅当预测耗尽时间早于周期结束时间时才显示预警。
+A warning is shown only when the predicted exhaustion time is earlier than the cycle end.
 
-### 未使用账号估算
+### Estimate for unused accounts
 
-未消耗账号没有自身用量数据，无法单独反推额度。脚本采用同周期窗口分组的中位数估算：
+Unused accounts have no usage data of their own, so their limit cannot be inferred individually. The script uses median estimation grouped by cycle window:
 
-- 按 `limitWindowSeconds` 把账号分组（月窗口与周窗口不混用）
-- 每组取所有「真实有消耗且能反推」账号的反推额度
-- 取该组的中位数作为未使用账号的估算额度
+- Group accounts by `limitWindowSeconds` (monthly windows are never mixed with weekly ones)
+- For each group, take the inferred limits of all accounts with real usage
+- Use the group's median as the estimate for unused accounts
 
-中位数而非均值，抗异常值污染。
+Median, not mean, to resist outlier contamination.
 
-## 国际化
+## Internationalization
 
-脚本跟随 CPA-Manager-Plus 的当前语言，支持：
+The script follows the CPA-Manager-Plus language:
 
-| 语言 | 代码 |
+| Language | Code |
 |---|---|
-| 简体中文 | `zh-CN` |
-| 繁体中文 | `zh-TW` |
-| 英文 | `en` |
-| 俄文 | `ru` |
+| Simplified Chinese | `zh-CN` |
+| Traditional Chinese | `zh-TW` |
+| English | `en` |
+| Russian | `ru` |
 
-语言检测读取自 `document.documentElement.lang` 与 CPA-Manager-Plus 的 localStorage key `cli-proxy-language`，切换页面语言后脚本下次注入即跟随，无需刷新脚本。
+Language detection reads `document.documentElement.lang` and CPA-Manager-Plus's localStorage key `cli-proxy-language`. Switching the page language takes effect on the next injection — no script reload needed.
 
-## 限制
+## Limitations
 
-- 总额度与剩余额度属于估算值，依赖 `used_percent` 与 analytics 聚合数据的准确性
-- 提前耗尽预测基于当前周期平均消耗速度，短时间突增突降会影响准确性
-- 未使用账号的估算准确度取决于同周期窗口的样本数量；样本越少越不可靠
-- 脚本依赖 CPA-Manager-Plus 当前前端 DOM class 名称与接口结构，上游大改后可能需要适配
+- Total and remaining quotas are estimates that depend on the accuracy of `used_percent` and analytics aggregation
+- Early-exhaustion prediction is based on the average pace in the current cycle and can be affected by short bursts or dips
+- The estimate for unused accounts depends on the number of samples in the same cycle window — fewer samples means less reliable
+- The script depends on the current CPA-Manager-Plus frontend DOM class names and API shape; major upstream changes may require adaptation
 
-## 开发
+## Development
 
-### 仓库结构
+### Repository structure
 
 ```
 CPA-codex-helper/
-├── CPA-codex-helper.user.js   # 主脚本
+├── CPA-codex-helper.user.js   # main script
 ├── README.md
+├── README.zh-CN.md
 ├── CHANGELOG.md
 ├── LICENSE
+├── img/                       # screenshots
 └── .gitignore
 ```
 
-### 本地调试
+### Local debugging
 
-1. 克隆仓库
-2. 在油猴扩展中新建脚本，粘贴 `CPA-codex-helper.user.js` 内容
-3. 保存脚本并刷新 CPA-Manager-Plus 页面
+1. Clone the repo
+2. In your userscript manager, create a new script and paste the content of `CPA-codex-helper.user.js`
+3. Save and refresh the CPA-Manager-Plus page
 
-### 发布检查
+### Pre-release checklist
 
-每次发布前同步更新：
+Before each release, update in sync:
 
-1. `CPA-codex-helper.user.js` 头部的 `@version`
+1. `@version` in the `CPA-codex-helper.user.js` header
 2. [`CHANGELOG.md`](./CHANGELOG.md)
-3. README 中如有新增或变更的功能说明
+3. README feature descriptions if anything changed
 
 ## License
 
