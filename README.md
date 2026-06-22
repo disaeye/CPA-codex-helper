@@ -61,7 +61,13 @@ A chip at the Codex section title shows the merged view of all accounts:
 
 ## Installation
 
-### Option 1: Install via userscript manager
+### Option 1: From Greasy Fork (recommended)
+
+Install from the Greasy Fork page — your userscript manager will keep it up to date automatically.
+
+**[Install from Greasy Fork](https://greasyfork.org/en/scripts/583900-cpa-codex-helper)**
+
+### Option 2: From GitHub raw URL
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/) in your browser
 2. Open the install URL:
@@ -72,7 +78,7 @@ A chip at the Codex section title shows the merged view of all accounts:
 
 3. Confirm on the installation page
 
-### Option 2: Manual paste
+### Option 3: Manual paste
 
 1. Copy the full content of [`CPA-codex-helper.user.js`](./CPA-codex-helper.user.js)
 2. Create a new script in your userscript manager, paste the content, and save

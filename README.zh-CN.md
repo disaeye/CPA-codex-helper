@@ -61,7 +61,13 @@
 
 ## 安装
 
-### 方式一：通过油猴扩展安装
+### 方式一：从 Greasy Fork 安装（推荐）
+
+从 Greasy Fork 脚本页安装，油猴扩展会自动保持更新。
+
+**[从 Greasy Fork 安装](https://greasyfork.org/zh-CN/scripts/583900-cpa-codex-helper)**
+
+### 方式二：通过 GitHub raw 地址安装
 
 1. 浏览器安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/)
 2. 打开脚本安装地址：
@@ -72,7 +78,7 @@
 
 3. 在弹出的安装页确认即可
 
-### 方式二：手动粘贴
+### 方式三：手动粘贴
 
 1. 复制 [`CPA-codex-helper.user.js`](./CPA-codex-helper.user.js) 的全部内容
 2. 在油猴扩展中新建脚本，粘贴内容并保存
