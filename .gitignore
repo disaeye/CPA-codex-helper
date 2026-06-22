@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# 日志 / 临时
+*.log
+tmp/
+.cache/
+
+# 油猴脚本本地构建产物（如有打包流程）
+dist/
+build/
+node_modules/
+
+# 备份
+*.bak
+*.orig
+
+# AI 编码助手工作目录
+.omo/
+.claude/
+.codex/
+.opencode/
