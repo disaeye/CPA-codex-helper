@@ -8,23 +8,13 @@ A userscript for self-hosted CPA-Manager-Plus frontends. The script does not tou
 
 ## Screenshots
 
-### Card with usage
+A single page view shows all three modification points at once:
 
-For accounts that have consumed this cycle, the script adds three rows under the original card: cycle usage, inferred total limit, and an early-exhaustion warning.
+- **Card with usage** (right): adds "Used this cycle", "Total limit", "Remaining", and an early-exhaustion warning
+- **Card without usage** (left): shows "Not used yet" with an estimated limit based on the median of same-cycle accounts
+- **Aggregate summary** (chip next to the title): merged used / total tokens & cost, color-coded usage percentage, estimated account count, and a predicted exhaustion time
 
-![Card with usage](./img/card-with-usage.png)
-
-### Card without usage
-
-For accounts that have not been used this cycle, the script shows "Not used yet" and an estimated limit based on the median of active accounts in the same cycle window.
-
-![Card without usage](./img/card-without-usage.png)
-
-### Aggregate summary
-
-A chip next to the "Codex 额度" section title shows the combined view across all accounts: used / total tokens & cost, usage percentage (color-coded at 30% / 70%), estimated-account count, and a predicted exhaustion time when applicable.
-
-![Aggregate summary](./img/aggregate-summary.png)
+![Page overview](./img/preview.png)
 
 ## Features
 
