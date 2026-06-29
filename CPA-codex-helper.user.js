@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CPA Codex Helper
 // @namespace    https://github.com/disaeye/CPA-codex-helper
-// @version      0.1.3
+// @version      0.1.4
 // @description  增强 CPA-Manager-Plus 的 Codex 额度展示，显示周期用量、反推总额度与提前耗尽预警
 // @author       disaeye
 // @license      MIT
@@ -97,6 +97,7 @@
       'card.not_used': '尚未使用',
       'card.estimated_limit': '估算总额度',
       'card.estimated_sample_note': '（参考同周期 {{count}} 个账号中位数）',
+      'card.tooltip_estimated_total': '预估总额度',
       'card.exhaust_warning': '⚠ 提前耗尽预警',
       'card.exhaust_in': '{{time}}后用完',
       'card.exhaust_early': '（早 {{time}}）',
@@ -125,6 +126,7 @@
       'card.not_used': '尚未使用',
       'card.estimated_limit': '估算總額度',
       'card.estimated_sample_note': '（參考同週期 {{count}} 個帳號中位數）',
+      'card.tooltip_estimated_total': '預估總額度',
       'card.exhaust_warning': '⚠ 提前耗盡預警',
       'card.exhaust_in': '{{time}}後用完',
       'card.exhaust_early': '（早 {{time}}）',
@@ -153,6 +155,7 @@
       'card.not_used': 'Not used yet',
       'card.estimated_limit': 'Estimated limit',
       'card.estimated_sample_note': '(median of {{count}} same-cycle accounts)',
+      'card.tooltip_estimated_total': 'Estimated total',
       'card.exhaust_warning': '⚠ Early exhaustion warning',
       'card.exhaust_in': 'runs out in {{time}}',
       'card.exhaust_early': '({{time}} early)',
@@ -181,6 +184,7 @@
       'card.not_used': 'Ещё не использовалось',
       'card.estimated_limit': 'Оценочный лимит',
       'card.estimated_sample_note': '(медиана по {{count}} аккаунтам того же цикла)',
+      'card.tooltip_estimated_total': 'Оценочный лимит',
       'card.exhaust_warning': '⚠ Раннее исчерпание',
       'card.exhaust_in': 'закончится через {{time}}',
       'card.exhaust_early': '({{time}} ранее)',
@@ -1175,6 +1179,100 @@
     }
 
     updateRow(row, info, usage);
+    injectTooltipEstimate(card, authIndex, info, usage);
+  }
+
+  const TOOLTIP_INJECT_FLAG = 'data-cmp-tooltip-injected';
+
+  function injectTooltipEstimate(card, authIndex, info, usage) {
+    if (state.analyticsAvailable === false) return;
+    const cls = getCachedClasses();
+    if (!cls || !cls.quotaInfoTooltip) return;
+
+    if (!info || !info.usedPercent || info.usedPercent <= 0.01) {
+      clearTooltips(card);
+      return;
+    }
+    if (!usage || usage.error != null || usage.tokens == null || usage.tokens === 0) {
+      clearTooltips(card);
+      return;
+    }
+
+    const ratio = info.usedPercent / 100;
+    const totalTokens = usage.tokens / ratio;
+    const totalCost = usage.cost != null ? usage.cost / ratio : null;
+    const valueStr = formatTokens(totalTokens)
+      + (totalCost != null && Number.isFinite(totalCost) ? ' · ' + formatCost(totalCost) : '');
+
+    const triggers = card.querySelectorAll('[class*="' + cls.quotaInfoTrigger + '"]');
+    for (const trigger of triggers) {
+      const tooltip = trigger.querySelector('[class*="' + cls.quotaInfoTooltip + '"]');
+      if (!tooltip) continue;
+
+      // 同窗口匹配：从 trigger 回溯到所属 quotaRow，读其 quotaPercent 数值
+      // state.quotaInfo 只缓存主窗口，所以只在 usedPercent 匹配的 row 注入
+      const row = trigger.closest('[class*="' + cls.quotaRow + '"]');
+      if (row) {
+        const pctEl = row.querySelector('[class*="' + cls.quotaPercent + '"]');
+        const pctText = pctEl ? (pctEl.textContent || '').trim() : '';
+        const match = pctText.match(/([\d.]+)/);
+        if (!match) continue;
+        const rowPct = parseFloat(match[1]);
+        if (!Number.isFinite(rowPct) || Math.abs(rowPct - info.usedPercent) > 0.5) continue;
+      }
+
+      let injected = tooltip.querySelector('[' + TOOLTIP_INJECT_FLAG + ']');
+      if (!injected) {
+        injected = document.createElement('span');
+        injected.className = cls.quotaInfoTooltipRow || '';
+        injected.setAttribute(TOOLTIP_INJECT_FLAG, '1');
+        tooltip.appendChild(injected);
+      }
+      const labelEl = injected.querySelector('[class*="' + cls.quotaInfoTooltipLabel + '"]');
+      const valueEl = injected.querySelector('[class*="' + cls.quotaInfoTooltipValue + '"]');
+      if (labelEl) {
+        labelEl.textContent = t('card.tooltip_estimated_total');
+      } else {
+        const lab = document.createElement('span');
+        lab.className = cls.quotaInfoTooltipLabel || '';
+        lab.textContent = t('card.tooltip_estimated_total');
+        injected.appendChild(lab);
+      }
+      if (valueEl) {
+        valueEl.textContent = valueStr;
+      } else {
+        const val = document.createElement('span');
+        val.className = cls.quotaInfoTooltipValue || '';
+        val.textContent = valueStr;
+        injected.appendChild(val);
+      }
+    }
+
+    clearTooltipsExcept(card, info.usedPercent);
+  }
+
+  function clearTooltips(card) {
+    const flagged = card.querySelectorAll('[' + TOOLTIP_INJECT_FLAG + ']');
+    for (const el of flagged) el.remove();
+  }
+
+  function clearTooltipsExcept(card, keepPct) {
+    const triggers = card.querySelectorAll('[class*="quotaInfoTrigger"]');
+    for (const trigger of triggers) {
+      const tooltip = trigger.querySelector('[class*="quotaInfoTooltip"]');
+      if (!tooltip) continue;
+      const row = trigger.closest('[class*="quotaRow"]');
+      if (!row) continue;
+      const pctEl = row.querySelector('[class*="quotaPercent"]');
+      const pctText = pctEl ? (pctEl.textContent || '').trim() : '';
+      const match = pctText.match(/([\d.]+)/);
+      if (!match) continue;
+      const rowPct = parseFloat(match[1]);
+      if (Number.isFinite(rowPct) && Math.abs(rowPct - keepPct) > 0.5) {
+        const flagged = tooltip.querySelector('[' + TOOLTIP_INJECT_FLAG + ']');
+        if (flagged) flagged.remove();
+      }
+    }
   }
 
   // 从原卡片元素读取 CSS module 实际类名（如 "QuotaPage_quotaRow__a1b2c"）
@@ -1192,6 +1290,12 @@
       'codexPlanLabel',
       'codexPlanValue',
       'codexPlan',
+      'quotaWindowLabel',
+      'quotaInfoTrigger',
+      'quotaInfoTooltip',
+      'quotaInfoTooltipRow',
+      'quotaInfoTooltipLabel',
+      'quotaInfoTooltipValue',
     ];
     for (const field of fields) {
       const el = card.querySelector('[class*="' + field + '"]');

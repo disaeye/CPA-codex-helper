@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-29
+
+### Added
+
+- 在 Codex 额度卡片每个周期 tooltip 里新增「预估总额度」一行：基于该周期的 `used_percent` 和 analytics 聚合的真实 token/$ 已用量反推该周期的总配额（`total = used / (used_percent/100)`）。仅在主窗口（userscript 数据来源对应的窗口）注入；账号未使用则不显示。
+
 ## [0.1.3] - 2026-06-29
 
 ### Fixed
