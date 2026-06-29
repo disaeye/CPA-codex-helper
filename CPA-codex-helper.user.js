@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CPA Codex Helper
 // @namespace    https://github.com/disaeye/CPA-codex-helper
-// @version      0.1.2
+// @version      0.1.3
 // @description  增强 CPA-Manager-Plus 的 Codex 额度展示，显示周期用量、反推总额度与提前耗尽预警
 // @author       disaeye
 // @license      MIT
@@ -1086,7 +1086,10 @@
       summaryText += ' · ' + t('summary.badge_excluded_accounts', { count: stats.excludedAccounts });
     }
     if (aggregateExhaustEarlyMs != null) {
-      summaryText += ' · ' + t('summary.badge_exhaust_in', { time: formatRemainingMs(aggregateExhaustEarlyMs) });
+      // 徽章显示「X 天后耗尽」—— 必须用真正剩余时间（exhaustAt - now），
+      // 不能用 aggregateExhaustEarlyMs（那是「比周期结束早多少」，会被误解为剩余时间）
+      const realBadgeRemainingMs = Math.max(0, aggregateExhaustAtMs - Date.now());
+      summaryText += ' · ' + t('summary.badge_exhaust_in', { time: formatRemainingMs(realBadgeRemainingMs) });
     }
     span.textContent = summaryText;
   }
