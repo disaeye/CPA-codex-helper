@@ -24,6 +24,11 @@
 - 脚本运行时机调整为 `document-start`，确保能在页面首批请求前安装 XHR hook。
 - 更新 README，补充安装、使用、限制与自部署匹配规则说明。
 
+### Fixed
+
+- 修复删除账号后「Codex 周期用量聚合」徽章总额度不下降的问题：`auth-files` 响应现作为账号全集对 `fileToAuthIndex` / `quotaInfo` / `cycleUsage` / `authFileMeta` 四个 Map 做全量 reconcile，清理已删除账号的陈旧缓存（含 localStorage 持久化部分），使下一次注入时聚合统计基于当前真实账号集合。
+- 修复异常账号仍被计入总额度的问题：聚合统计现按账号状态过滤——剔除 `status: "error"`（如需重新授权）、`unavailable: true`（瞬时不可用）以及 `api-call` 响应 `status_code >= 400` 的账号；保留 `disabled`（操作员手动禁用，仍保留额度）与中间态账号。徽章新增「剔除 N 异常」后缀显示被过滤的账号数。
+
 ## [0.1.0] - YYYY-MM-DD
 
 ### Added

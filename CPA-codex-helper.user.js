@@ -46,10 +46,12 @@
     analyticsAvailable: null,
     // fileName -> authIndex（从 auth-files 响应）
     fileToAuthIndex: new Map(),
-    // authIndex -> { resetAtMs, usedPercent, limitWindowSeconds, fileName, capturedAt }
+    // authIndex -> { resetAtMs, usedPercent, limitWindowSeconds, fileName, capturedAt, httpStatus }
     quotaInfo: new Map(),
     // authIndex -> { tokens, cost, requests, fetchedAt, error }
     cycleUsage: new Map(),
+    // authIndex -> { disabled, status, unavailable, statusMessage, capturedAt }
+    authFileMeta: new Map(),
     // 正在请求中的 authIndex Set，防重复
     pendingAnalytics: new Set(),
   };
@@ -108,6 +110,7 @@
       'summary.no_exhaust': '预计周期内不会耗尽',
       'summary.badge_cycle': '周期',
       'summary.badge_est_accounts': '估 {{count}} 账号',
+      'summary.badge_excluded_accounts': '剔除 {{count}} 异常',
       'summary.badge_exhaust_in': '⚠ {{time}}后耗尽',
     },
     'zh-TW': {
@@ -135,6 +138,7 @@
       'summary.no_exhaust': '預計週期內不會耗盡',
       'summary.badge_cycle': '週期',
       'summary.badge_est_accounts': '估 {{count}} 帳號',
+      'summary.badge_excluded_accounts': '剔除 {{count}} 異常',
       'summary.badge_exhaust_in': '⚠ {{time}}後耗盡',
     },
     en: {
@@ -162,6 +166,7 @@
       'summary.no_exhaust': 'Not expected to exhaust this cycle',
       'summary.badge_cycle': 'Cycle',
       'summary.badge_est_accounts': '~{{count}} acct',
+      'summary.badge_excluded_accounts': 'excl {{count}}',
       'summary.badge_exhaust_in': '⚠ exhausts in {{time}}',
     },
     ru: {
@@ -189,6 +194,7 @@
       'summary.no_exhaust': 'В этом цикле не ожидается исчерпание',
       'summary.badge_cycle': 'Цикл',
       'summary.badge_est_accounts': '~{{count}} акк',
+      'summary.badge_excluded_accounts': 'искл {{count}}',
       'summary.badge_exhaust_in': '⚠ закончится через {{time}}',
     },
   };
@@ -263,7 +269,16 @@
         }
       }
 
-      log('Loaded cache:', state.quotaInfo.size, 'quota,', state.cycleUsage.size, 'usage');
+      const metaMap = data.authFileMeta;
+      if (metaMap && typeof metaMap === 'object') {
+        for (const [authIndex, meta] of Object.entries(metaMap)) {
+          if (!meta || typeof meta !== 'object') continue;
+          if (typeof meta.capturedAt !== 'number' || now - meta.capturedAt > CACHE_MAX_AGE_MS) continue;
+          state.authFileMeta.set(authIndex, meta);
+        }
+      }
+
+      log('Loaded cache:', state.quotaInfo.size, 'quota,', state.cycleUsage.size, 'usage,', state.authFileMeta.size, 'meta');
     } catch (e) {
       warn('loadCache failed:', e);
     }
@@ -276,11 +291,20 @@
     saveCacheTimer = setTimeout(() => {
       saveCacheTimer = null;
       try {
+        // httpStatus 不持久化：它是「最后一次 Codex 调用的 HTTP 结果」，会过时
+        // （账号可能已经重新授权或恢复），每次会话必须重新探测
+        const quotaInfoForSave = {};
+        for (const [k, v] of state.quotaInfo.entries()) {
+          if (!v) { quotaInfoForSave[k] = v; continue; }
+          const { httpStatus, ...rest } = v;
+          quotaInfoForSave[k] = rest;
+        }
         const data = {
           savedAt: Date.now(),
-          quotaInfo: Object.fromEntries(state.quotaInfo),
+          quotaInfo: quotaInfoForSave,
           cycleUsage: Object.fromEntries(state.cycleUsage),
           fileToAuthIndex: Object.fromEntries(state.fileToAuthIndex),
+          authFileMeta: Object.fromEntries(state.authFileMeta),
         };
         localStorage.setItem(CACHE_KEY, JSON.stringify(data));
       } catch (e) {
@@ -359,7 +383,14 @@
     const rl =
       payload.rate_limit ?? payload.rateLimit ??
       payload.code_review_rate_limit ?? payload.codeReviewRateLimit;
-    return extractWindowInfo(rl);
+    const info = extractWindowInfo(rl);
+    if (!info) return null;
+
+    const statusCode = body.status_code ?? body.statusCode;
+    return {
+      ...info,
+      httpStatus: typeof statusCode === 'number' ? statusCode : null,
+    };
   }
 
   // 格式化 token 数：1234567 -> "1.2M"
@@ -467,22 +498,73 @@
     const url = xhr.__cmpUrl || '';
     const respText = xhr.responseText || '';
 
-    // 1) auth-files 响应 —— 建 fileName -> authIndex 映射
+    // 1) auth-files 响应 —— 建 fileName -> authIndex 映射，并清理已删除账号的陈旧缓存
+    //    服务端返回的是当前文件全集，作为 ground truth 对本地四个 Map 做全量 reconcile；
+    //    否则删除账号后 quotaInfo/cycleUsage/authFileMeta 残留，聚合统计（computeAggregateStats）
+    //    仍会累加已删账号，导致标题徽章的总额度不下降。
     if (url.includes(AUTH_FILES_PATH) && respText) {
       const data = parseJSON(respText);
       const files = data?.files ?? data?.data?.files ?? null;
       if (Array.isArray(files)) {
-        let added = 0;
+        const freshFileMap = new Map();
+        const freshAuthIndices = new Set();
+        const freshMeta = new Map();
+        const now = Date.now();
         for (const f of files) {
           const name = f.name ?? f.file_name ?? f.fileName;
           const ai = f.auth_index ?? f.authIndex ?? f['auth-index'];
           if (name && ai) {
-            state.fileToAuthIndex.set(name, String(ai));
-            added++;
+            const aiStr = String(ai);
+            freshFileMap.set(name, aiStr);
+            freshAuthIndices.add(aiStr);
+            const rawStatusMsg = f.status_message ?? f.statusMessage ?? f['status-message'];
+            freshMeta.set(aiStr, {
+              disabled: f.disabled === true || f.Disabled === true,
+              status: typeof (f.status ?? f.state) === 'string' ? String(f.status ?? f.state) : null,
+              unavailable: f.unavailable === true || f.Unavailable === true,
+              statusMessage: typeof rawStatusMsg === 'string' ? rawStatusMsg : '',
+              capturedAt: now,
+            });
           }
         }
-        if (added > 0) {
-          log('Mapped', added, 'files to authIndex');
+
+        // 全量 reconcile：删除不在本次响应里的陈旧条目
+        // （文件改名 → 旧 fileName 移除；账号删除 → 对应 authIndex 四处同步清理）
+        // 空响应视为「无数据」（可能是筛选/异常结果），跳过清理避免误删全部
+        let pruned = 0;
+        if (freshAuthIndices.size > 0) {
+          for (const fname of [...state.fileToAuthIndex.keys()]) {
+            if (!freshFileMap.has(fname)) { state.fileToAuthIndex.delete(fname); pruned++; }
+          }
+          for (const ai of [...state.quotaInfo.keys()]) {
+            if (!freshAuthIndices.has(ai)) { state.quotaInfo.delete(ai); pruned++; }
+          }
+          for (const ai of [...state.cycleUsage.keys()]) {
+            if (!freshAuthIndices.has(ai)) { state.cycleUsage.delete(ai); pruned++; }
+          }
+          for (const ai of [...state.authFileMeta.keys()]) {
+            if (!freshAuthIndices.has(ai)) { state.authFileMeta.delete(ai); pruned++; }
+          }
+        }
+
+        let added = 0;
+        let metaUpdated = 0;
+        for (const [name, ai] of freshFileMap) {
+          if (!state.fileToAuthIndex.has(name)) added++;
+          state.fileToAuthIndex.set(name, ai);
+        }
+        for (const [ai, meta] of freshMeta) {
+          const prev = state.authFileMeta.get(ai);
+          if (!prev || prev.disabled !== meta.disabled || prev.status !== meta.status
+              || prev.unavailable !== meta.unavailable || prev.statusMessage !== meta.statusMessage) {
+            metaUpdated++;
+          }
+          state.authFileMeta.set(ai, meta);
+        }
+
+        if (added > 0 || pruned > 0 || metaUpdated > 0) {
+          log('Mapped', added, 'files to authIndex; pruned', pruned, 'stale entries; meta updated for', metaUpdated);
+          saveCache();
           scheduleInjection();
         }
       }
@@ -802,6 +884,21 @@
   // 区块标题聚合统计
   // ============================================================
 
+  // 判定账号是否应计入聚合统计
+  // 剔除规则：unavailable（瞬时不可用，如配额耗尽/限流）、status==='error'（异常，如需重新授权）、
+  // httpStatus>=400（api-call 代理 Codex 返回非 2xx）
+  // 保留规则：disabled（操作员手动禁用，仍保留额度）、pending/refreshing/unknown（瞬时中间态）
+  function isAccountIncludedInAggregate(authIndex) {
+    const meta = state.authFileMeta.get(authIndex);
+    if (meta) {
+      if (meta.unavailable === true) return false;
+      if (meta.status === 'error') return false;
+    }
+    const info = state.quotaInfo.get(authIndex);
+    if (info && typeof info.httpStatus === 'number' && info.httpStatus >= 400) return false;
+    return true;
+  }
+
   // 遍历所有 Codex 账号的缓存数据，算出总已用 + 总额度
   // - 真实反推账号：used / (usedPercent/100)
   // - 未使用账号：用同周期窗口的中位数估算（计入 estimatedAccounts）
@@ -813,10 +910,16 @@
     let accountCount = 0;          // 真实反推账号数
     let estimatedAccounts = 0;     // 估算额度账号数
     let estimatedLimitTokens = 0;  // 估算账号贡献的额度（用于 UI 提示）
+    let excludedAccounts = 0;      // 因异常状态被剔除的账号数
 
     for (const [authIndex, usage] of state.cycleUsage.entries()) {
       const info = state.quotaInfo.get(authIndex);
       if (!info) continue;
+
+      if (!isAccountIncludedInAggregate(authIndex)) {
+        excludedAccounts++;
+        continue;
+      }
 
       if (usage && usage.error == null && usage.tokens != null && usage.tokens > 0
           && info.usedPercent && info.usedPercent > 0.01) {
@@ -847,6 +950,7 @@
       accountCount,
       estimatedAccounts,
       estimatedLimitTokens,
+      excludedAccounts,
     };
   }
 
@@ -900,6 +1004,7 @@
     let latestCycleEndMs = 0;
     for (const [authIndex, usage] of state.cycleUsage.entries()) {
       if (!usage || usage.error != null || usage.tokens == null || usage.tokens === 0) continue;
+      if (!isAccountIncludedInAggregate(authIndex)) continue;
       const info = state.quotaInfo.get(authIndex);
       if (!info || !info.usedPercent || info.usedPercent <= 0.01) continue;
       const cycleStartMs = info.resetAtMs - info.limitWindowSeconds * 1000;
@@ -968,6 +1073,9 @@
     let summaryText = t('summary.badge_cycle') + ' ' + tokensStr + ' · ' + costStr + ' · ' + pctStr;
     if (stats.estimatedAccounts > 0) {
       summaryText += ' · ' + t('summary.badge_est_accounts', { count: stats.estimatedAccounts });
+    }
+    if (stats.excludedAccounts > 0) {
+      summaryText += ' · ' + t('summary.badge_excluded_accounts', { count: stats.excludedAccounts });
     }
     if (aggregateExhaustEarlyMs != null) {
       summaryText += ' · ' + t('summary.badge_exhaust_in', { time: formatRemainingMs(aggregateExhaustEarlyMs) });
