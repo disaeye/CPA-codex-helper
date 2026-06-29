@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CPA Codex Helper
 // @namespace    https://github.com/disaeye/CPA-codex-helper
-// @version      0.1.0
+// @version      0.1.1
 // @description  增强 CPA-Manager-Plus 的 Codex 额度展示，显示周期用量、反推总额度与提前耗尽预警
 // @author       disaeye
 // @license      MIT
