@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CPA Codex Helper
 // @namespace    https://github.com/disaeye/CPA-codex-helper
-// @version      0.1.1
+// @version      0.1.2
 // @description  增强 CPA-Manager-Plus 的 Codex 额度展示，显示周期用量、反推总额度与提前耗尽预警
 // @author       disaeye
 // @license      MIT
@@ -998,15 +998,23 @@
     const pctStr = usedPct.toFixed(1) + '%';
 
     // 聚合耗尽预估：合并所有真实账号的消耗速率（未使用账号速率为 0，不贡献）
-    // exhaustAtMs = now + totalRemainingTokens / totalRate
+    // exhaustAtMs = now + realRemainingTokens / totalRate
     // 仅在有活跃消耗（totalRate > 0）且预估早于所有账号最晚 cycleEnd 时给出预警
+    //
+    // 分子必须只用真实账号的剩余额度，不能直接用 stats.totalLimitTokens - totalUsedTokens：
+    // 后者包含未使用账号的估算额度，但分母 aggregateRate 只来自真实账号（tokens===0 被跳过），
+    // 分子分母来自不同账号集合会让预估时间被严重拉长。
     let aggregateRate = 0;
+    let realRemainingTokens = 0;
     let latestCycleEndMs = 0;
     for (const [authIndex, usage] of state.cycleUsage.entries()) {
       if (!usage || usage.error != null || usage.tokens == null || usage.tokens === 0) continue;
       if (!isAccountIncludedInAggregate(authIndex)) continue;
       const info = state.quotaInfo.get(authIndex);
       if (!info || !info.usedPercent || info.usedPercent <= 0.01) continue;
+      const ratio = info.usedPercent / 100;
+      const limitForThis = usage.tokens / ratio;
+      realRemainingTokens += Math.max(0, limitForThis - usage.tokens);
       const cycleStartMs = info.resetAtMs - info.limitWindowSeconds * 1000;
       const elapsedMs = Date.now() - cycleStartMs;
       if (elapsedMs > 0) aggregateRate += usage.tokens / elapsedMs;
@@ -1014,8 +1022,8 @@
     }
     let aggregateExhaustAtMs = null;
     let aggregateExhaustEarlyMs = null;
-    if (aggregateRate > 0 && remainTokens > 0) {
-      const remainingMs = remainTokens / aggregateRate;
+    if (aggregateRate > 0 && realRemainingTokens > 0) {
+      const remainingMs = realRemainingTokens / aggregateRate;
       aggregateExhaustAtMs = Date.now() + remainingMs;
       if (latestCycleEndMs > 0 && aggregateExhaustAtMs < latestCycleEndMs) {
         aggregateExhaustEarlyMs = latestCycleEndMs - aggregateExhaustAtMs;

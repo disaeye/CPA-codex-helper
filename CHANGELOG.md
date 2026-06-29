@@ -6,28 +6,11 @@
 
 ## [Unreleased]
 
-### Added
-
-- 初始化油猴脚本仓库结构。
-- 新增 Codex 周期用量展示，包括 token、费用与请求次数。
-- 新增基于 Codex 已用百分比的周期总额度反推。
-- 新增剩余额度估算与提前耗尽预警。
-- 新增 Codex 区块标题聚合统计。
-- 新增 localStorage 缓存，减少短时间内重复请求。
-- 新增 analytics 端点不可用时的降级逻辑。
-- 新增未使用账号的额度估算：按同周期窗口的中位数估算总额度，并入区块标题聚合统计。
-- 新增多语言支持：跟随 CPA-Manager-Plus 当前语言（简体中文 / 繁体中文 / 英文 / 俄文），通过读取页面 `<html lang>` 与 `localStorage` 检测，内置字典翻译所有注入文案与时间单位。
-
-### Changed
-
-- 脚本默认按路径匹配任意域名下的 `management.html` 页面，覆盖自部署 CPA-Manager-Plus 管理页，无需手动配置实例域名。
-- 脚本运行时机调整为 `document-start`，确保能在页面首批请求前安装 XHR hook。
-- 更新 README，补充安装、使用、限制与自部署匹配规则说明。
+## [0.1.2] - 2026-06-29
 
 ### Fixed
 
-- 修复删除账号后「Codex 周期用量聚合」徽章总额度不下降的问题：`auth-files` 响应现作为账号全集对 `fileToAuthIndex` / `quotaInfo` / `cycleUsage` / `authFileMeta` 四个 Map 做全量 reconcile，清理已删除账号的陈旧缓存（含 localStorage 持久化部分），使下一次注入时聚合统计基于当前真实账号集合。
-- 修复异常账号仍被计入总额度的问题：聚合统计现按账号状态过滤——剔除 `status: "error"`（如需重新授权）、`unavailable: true`（瞬时不可用）以及 `api-call` 响应 `status_code >= 400` 的账号；保留 `disabled`（操作员手动禁用，仍保留额度）与中间态账号。徽章新增「剔除 N 异常」后缀显示被过滤的账号数。
+- 修复聚合耗尽预估时间被严重拉长的问题：原算法分子 `remainTokens`（来自 `totalLimitTokens - totalUsedTokens`）包含了 23 个未使用账号的估算额度，但分母 `aggregateRate` 只来自真实有消耗的账号——分子分母来自不同账号集合，等于假设未使用账号的额度也会以现有真实账号的速率被消耗。现改为分子只用真实账号剩余额度总和（`Σ (used/usedPercent - used)`），与分母口径一致。
 
 ## [0.1.1] - 2026-06-29
 
